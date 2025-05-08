@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,6 +25,14 @@ func main() {
 
 	// Initialize the bot
 	bot.Init()
+
+	go func() {
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		http.ListenAndServe(":8000", nil)
+	}()
 
 	// Keep the main goroutine alive
 	waitForShutdown()

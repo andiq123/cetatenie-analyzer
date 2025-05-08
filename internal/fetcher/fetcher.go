@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,8 +28,15 @@ var supportedYears = map[int]string{
 
 // New creates a new in-memory file fetcher instance
 func New() (FileFetcher, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // Skip TLS verification (not recommended for production)
+		},
+	}
 	return &httpFetcher{
-		client:  &http.Client{},
+		client: &http.Client{
+			Transport: transport,
+		},
 		baseURL: "https://cetatenie.just.ro/storage/2023/11/",
 	}, nil
 }
