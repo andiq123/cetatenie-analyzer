@@ -5,11 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"regexp"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/decree_processor"
 	"github.com/andiq123/cetatenie-analyzer/internal/parser"
@@ -38,47 +35,35 @@ type BotHandler struct {
 	botInstance     *bot.Bot
 }
 
-func Init() {
+// Init initializes and starts the Telegram bot with context support
+func Init(ctx context.Context) {
 	handler := &BotHandler{
 		decreeProcessor: decree_processor.New(),
 	}
 
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if token == "" {
-		panic("TELEGRAM_BOT_TOKEN is not set")
+		log.Fatal("TELEGRAM_BOT_TOKEN is not set")
 	}
 
-	b, err := bot.New(token,
+	opts := []bot.Option{
 		bot.WithDefaultHandler(handler.defaultHandler),
 		bot.WithMessageTextHandler("/start", bot.MatchTypeExact, handler.startCommand),
 		bot.WithMessageTextHandler("/help", bot.MatchTypeExact, handler.helpCommand),
-	)
+	}
+
+	b, err := bot.New(token, opts...)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to create bot: %v", err)
 	}
 
 	handler.botInstance = b
 
-	// Create a context that we can cancel
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Set up graceful shutdown
 	go func() {
-		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-		<-stop
-
-		log.Println("Stopping bot gracefully...")
-		cancel()
-
-		// Give some time for cleanup
-		time.Sleep(1 * time.Second)
-		log.Println("Bot stopped")
-		os.Exit(0)
+		log.Println("Starting Telegram bot...")
+		b.Start(ctx)
+		log.Println("Telegram bot stopped")
 	}()
-
-	log.Println("Bot started successfully")
-	b.Start(ctx)
 }
 
 func (h *BotHandler) defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -135,17 +120,11 @@ func (h *BotHandler) sendHelpMessage(ctx context.Context, b *bot.Bot, chatID int
 }
 
 func (h *BotHandler) sendMessage(ctx context.Context, b *bot.Bot, chatID int64, text string) {
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: chatID,
 		Text:   text,
 	})
-}
-
-// Stop stops the bot
-func (h *BotHandler) Stop() {
-	if h.botInstance != nil {
-		log.Println("Stopping bot...")
-		// The go-telegram-bot library doesn't have a direct Stop method,
-		// but we can cancel the context in the Init function
+	if err != nil {
+		log.Printf("Failed to send message: %v", err)
 	}
 }
