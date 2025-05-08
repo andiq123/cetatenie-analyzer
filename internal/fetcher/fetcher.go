@@ -18,9 +18,6 @@ type httpFetcher struct {
 }
 
 var supportedYears = map[int]string{
-	2020: "art_11_anul_2020.pdf",
-	2021: "art_11_anul_2021.pdf",
-	2022: "art_11_anul_2022.pdf",
 	2023: "art_11_anul_2023.pdf",
 	2024: "art_11_anul_2024.pdf",
 	2025: "art_11_anul_2025.pdf",

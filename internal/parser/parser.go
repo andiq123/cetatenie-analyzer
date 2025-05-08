@@ -6,7 +6,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/ledongthuc/pdf"
 )
@@ -44,6 +43,7 @@ func GetStateMessage(state FindState) string {
 }
 
 func (p *pdfParser) ReadPdf(data io.ReadSeeker, search string) (FindState, error) {
+	// Read all data into a bytes.Reader which implements both io.ReaderAt and io.Seeker
 	buf := new(bytes.Buffer)
 	_, err := io.Copy(buf, data)
 	if err != nil {
@@ -55,64 +55,26 @@ func (p *pdfParser) ReadPdf(data io.ReadSeeker, search string) (FindState, error
 		return StateNotFound, fmt.Errorf("error creating PDF reader: %v", err)
 	}
 
-	numPages := reader.NumPage()
-	if numPages == 0 {
-		return StateNotFound, nil
-	}
-
-	// Channel to receive results from goroutines
-	resultChan := make(chan FindState, numPages)
-	// Channel to limit concurrent goroutines (optional)
-	semaphore := make(chan struct{}, 10) // Limit to 10 concurrent goroutines
-
-	var wg sync.WaitGroup
-
-	for i := 1; i <= numPages; i++ {
-		wg.Add(1)
-		go func(pageNum int) {
-			defer wg.Done()
-			semaphore <- struct{}{}        // Acquire semaphore
-			defer func() { <-semaphore }() // Release semaphore
-
-			page := reader.Page(pageNum)
-			if page.V.IsNull() {
-				return
-			}
-
-			text, err := page.GetPlainText(nil)
-			if err != nil {
-				// You might want to handle errors differently in concurrent context
-				return
-			}
-
-			index := strings.Index(text, search)
-			if index != -1 {
-				const offset = 43
-				end := min(index+offset, len(text))
-				if strings.Contains(text[index:end], "/P/") {
-					resultChan <- StateFoundAndResolved
-					return
-				}
-				resultChan <- StateFoundButNotResolved
-				return
-			}
-		}(i)
-	}
-
-	// Close the result channel when all goroutines are done
-	go func() {
-		wg.Wait()
-		close(resultChan)
-	}()
-
-	// Process results as they come in
-	for result := range resultChan {
-		if result == StateFoundAndResolved {
-			// Return immediately if we find the best possible match
-			return result, nil
+	for i := 1; i <= reader.NumPage(); i++ {
+		page := reader.Page(i)
+		if page.V.IsNull() {
+			continue
 		}
-		// For StateFoundButNotResolved, keep checking other pages
-		// in case we find a StateFoundAndResolved later
+
+		text, err := page.GetPlainText(nil)
+		if err != nil {
+			return StateNotFound, fmt.Errorf("error reading page %d: %v", i, err)
+		}
+
+		index := strings.Index(text, search)
+		if index != -1 {
+			const offset = 43
+			end := min(index+offset, len(text))
+			if strings.Contains(text[index:end], "/P/") {
+				return StateFoundAndResolved, nil
+			}
+			return StateFoundButNotResolved, nil
+		}
 	}
 
 	return StateNotFound, nil
@@ -140,11 +102,4 @@ func (p *pdfParser) GetYear(search string) (int, error) {
 	}
 
 	return year, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
