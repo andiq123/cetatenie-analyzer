@@ -3,7 +3,6 @@ package decree_processor
 import (
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/fetcher"
 	"github.com/andiq123/cetatenie-analyzer/internal/parser"
@@ -21,7 +20,7 @@ type service struct {
 
 // New creates a new decree processor service
 func New() Processor {
-	f, err := fetcher.New(time.Hour * 24)
+	f, err := fetcher.New()
 	if err != nil {
 		panic(fmt.Errorf("failed to create fetcher: %v", err))
 	}
@@ -43,7 +42,6 @@ func (s *service) Handle(search string) (parser.FindState, error) {
 	if err != nil {
 		return parser.StateNotFound, fmt.Errorf("nu am putut obține fișierul pentru anul %d: %v", year, err)
 	}
-	defer s.cleanupTempFile(tempPath)
 
 	state, err := s.parser.ReadPdf(tempPath, search)
 	if err != nil {

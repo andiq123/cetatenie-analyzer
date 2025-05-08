@@ -1,7 +1,9 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -9,7 +11,7 @@ import (
 )
 
 type PDFParser interface {
-	ReadPdf(path, search string) (FindState, error)
+	ReadPdf(data io.ReadSeeker, search string) (FindState, error)
 	GetYear(search string) (int, error)
 }
 
@@ -40,12 +42,18 @@ func GetStateMessage(state FindState) string {
 	return "Unknown state"
 }
 
-func (p *pdfParser) ReadPdf(path, search string) (FindState, error) {
-	file, reader, err := pdf.Open(path)
+func (p *pdfParser) ReadPdf(data io.ReadSeeker, search string) (FindState, error) {
+	// Read all data into a bytes.Reader which implements both io.ReaderAt and io.Seeker
+	buf := new(bytes.Buffer)
+	_, err := io.Copy(buf, data)
 	if err != nil {
-		return StateNotFound, err
+		return StateNotFound, fmt.Errorf("error reading PDF data: %v", err)
 	}
-	defer file.Close()
+
+	reader, err := pdf.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		return StateNotFound, fmt.Errorf("error creating PDF reader: %v", err)
+	}
 
 	for i := 1; i <= reader.NumPage(); i++ {
 		page := reader.Page(i)
@@ -55,7 +63,7 @@ func (p *pdfParser) ReadPdf(path, search string) (FindState, error) {
 
 		text, err := page.GetPlainText(nil)
 		if err != nil {
-			return StateNotFound, err
+			return StateNotFound, fmt.Errorf("error reading page %d: %v", i, err)
 		}
 
 		index := strings.Index(text, search)
@@ -94,4 +102,11 @@ func (p *pdfParser) GetYear(search string) (int, error) {
 	}
 
 	return year, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

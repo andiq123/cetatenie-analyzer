@@ -1,22 +1,19 @@
 package fetcher
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"time"
 )
 
 type FileFetcher interface {
-	GetFile(year int) (string, error)
-	CleanupCache() error
+	GetFile(year int) (io.ReadSeeker, error)
 }
 
 type httpFetcher struct {
 	client  *http.Client
 	baseURL string
-	cache   *CacheManager
 }
 
 var supportedYears = map[int]string{
@@ -28,71 +25,52 @@ var supportedYears = map[int]string{
 	2025: "art_11_anul_2025.pdf",
 }
 
-// New creates a new file fetcher instance
-func New(maxCacheAge time.Duration) (FileFetcher, error) {
-	cache, err := NewCacheManager(maxCacheAge)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache manager: %v", err)
-	}
-
+// New creates a new in-memory file fetcher instance
+func New() (FileFetcher, error) {
 	return &httpFetcher{
 		client:  &http.Client{},
 		baseURL: "https://cetatenie.just.ro/storage/2023/11/",
-		cache:   cache,
 	}, nil
 }
 
-// GetFile retrieves the annual report PDF for the given year
-func (f *httpFetcher) GetFile(year int) (string, error) {
+// GetFile retrieves the annual report PDF for the given year and returns it as an io.ReadSeeker
+func (f *httpFetcher) GetFile(year int) (io.ReadSeeker, error) {
 	filename, ok := supportedYears[year]
 	if !ok {
-		return "", fmt.Errorf("anul %d nu este suportat", year)
+		return nil, fmt.Errorf("anul %d nu este suportat", year)
 	}
 
-	filePath := f.cache.GetFilePath(year)
-
-	// Return cached file if exists
-	if f.cache.FileExists(year) {
-		return filePath, nil
-	}
-
-	// Download the file if not cached
 	url := f.baseURL + filename
-	if err := f.downloadFile(url, filePath); err != nil {
-		return "", fmt.Errorf("eroare la descărcare: %v", err)
+	data, err := f.downloadFile(url)
+	if err != nil {
+		return nil, fmt.Errorf("eroare la descărcare: %v", err)
 	}
 
-	return filePath, nil
+	return bytes.NewReader(data), nil
 }
 
-func (f *httpFetcher) CleanupCache() error {
-	return f.cache.Cleanup()
-}
-
-func (f *httpFetcher) downloadFile(url, filePath string) error {
+func (f *httpFetcher) downloadFile(url string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
 
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("cod de stare HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("cod de stare HTTP %d", resp.StatusCode)
 	}
 
-	out, err := os.Create(filePath)
-	if err != nil {
-		return err
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, resp.Body); err != nil {
+		return nil, err
 	}
-	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	return buf.Bytes(), nil
 }
