@@ -3,9 +3,13 @@ package bot
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"regexp"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/decree_processor"
 	"github.com/andiq123/cetatenie-analyzer/internal/parser"
@@ -31,6 +35,7 @@ Succes!`
 
 type BotHandler struct {
 	decreeProcessor decree_processor.Processor
+	botInstance     *bot.Bot
 }
 
 func Init() {
@@ -52,7 +57,28 @@ func Init() {
 		panic(err)
 	}
 
-	b.Start(context.TODO())
+	handler.botInstance = b
+
+	// Create a context that we can cancel
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Set up graceful shutdown
+	go func() {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		<-stop
+
+		log.Println("Stopping bot gracefully...")
+		cancel()
+
+		// Give some time for cleanup
+		time.Sleep(1 * time.Second)
+		log.Println("Bot stopped")
+		os.Exit(0)
+	}()
+
+	log.Println("Bot started successfully")
+	b.Start(ctx)
 }
 
 func (h *BotHandler) defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -113,4 +139,13 @@ func (h *BotHandler) sendMessage(ctx context.Context, b *bot.Bot, chatID int64, 
 		ChatID: chatID,
 		Text:   text,
 	})
+}
+
+// Stop stops the bot
+func (h *BotHandler) Stop() {
+	if h.botInstance != nil {
+		log.Println("Stopping bot...")
+		// The go-telegram-bot library doesn't have a direct Stop method,
+		// but we can cancel the context in the Init function
+	}
 }
