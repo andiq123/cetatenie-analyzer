@@ -1,6 +1,6 @@
 module github.com/andiq123/cetatenie-analyzer
 
-go 1.24.0
+go 1.23
 
 require (
 	github.com/go-telegram/bot v1.15.0
