@@ -10,6 +10,7 @@ import (
 // Processor defines the interface for processing decree searches
 type Processor interface {
 	Handle(search string) (parser.FindState, error)
+	CleanUpCache() error
 }
 
 type service struct {
@@ -48,4 +49,8 @@ func (s *service) Handle(search string) (parser.FindState, error) {
 	}
 
 	return state, nil
+}
+
+func (s *service) CleanUpCache() error {
+	return s.fetcher.CleanUpCache()
 }

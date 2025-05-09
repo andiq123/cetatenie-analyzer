@@ -1,49 +1,36 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/bot"
+	"github.com/andiq123/cetatenie-analyzer/internal/decree_processor"
 	"github.com/joho/godotenv"
 )
 
 func init() {
-	// Try loading .env file but don't fail if it's missing
-	if err := godotenv.Load(); err != nil {
-		log.Printf("Notice: Could not load .env file (%v) - using environment variables", err)
-	}
+	_ = godotenv.Load()
 }
 
 func main() {
-	// Initialize the bot with context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	dp := decree_processor.New()
+	handler := bot.New(dp)
 
-	// Start the bot in a goroutine
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		bot.Init(ctx)
+		<-sigChan
+		log.Println("Shutting down...")
+		if err := handler.Close(); err != nil {
+			log.Printf("Error during shutdown: %v", err)
+		}
+		os.Exit(0)
 	}()
 
-	// Wait for shutdown signal
-	waitForShutdown(cancel)
-}
-
-func waitForShutdown(cancel context.CancelFunc) {
-	// Set up channel to receive OS signals
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	// Block until we receive a signal
-	sig := <-sigs
-	log.Printf("Received signal %v, shutting down gracefully...", sig)
-
-	// Cancel the main context
-	cancel()
-
-	log.Println("Shutdown complete")
-	os.Exit(0)
+	if err := handler.Init(); err != nil {
+		log.Fatalf("Failed to initialize bot: %v", err)
+	}
 }

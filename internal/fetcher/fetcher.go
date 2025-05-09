@@ -6,15 +6,19 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/andiq123/cetatenie-analyzer/internal/cache"
 )
 
 type FileFetcher interface {
 	GetFile(year int) ([]byte, error)
+	CleanUpCache() error
 }
 
 type httpFetcher struct {
 	client  *http.Client
 	baseURL string
+	cache   *cache.Cache
 }
 
 var supportedYears = map[int]string{
@@ -44,6 +48,7 @@ func New() (FileFetcher, error) {
 			Timeout:   60 * time.Second, // Added timeout
 		},
 		baseURL: "https://cetatenie.just.ro/storage/2023/11/",
+		cache:   cache.New(1 * time.Minute),
 	}, nil
 }
 
@@ -55,10 +60,19 @@ func (f *httpFetcher) GetFile(year int) ([]byte, error) {
 	}
 
 	url := f.baseURL + filename
+
+	// Check cache first
+	if data, found := f.cache.Get(url); found {
+		return data, nil
+	}
+
 	data, err := f.downloadFileWithRetry(url, 3) // 3 retries
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
+
+	f.cache.Set(url, data)
+	f.cache.Cleanup()
 
 	return data, nil
 }
@@ -112,4 +126,9 @@ func (f *httpFetcher) downloadFile(url string) ([]byte, error) {
 	}
 
 	return io.ReadAll(resp.Body)
+}
+
+func (f *httpFetcher) CleanUpCache() error {
+	f.cache.Cleanup()
+	return nil
 }
