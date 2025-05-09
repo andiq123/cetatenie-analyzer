@@ -2,7 +2,6 @@ package decree_processor
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/fetcher"
 	"github.com/andiq123/cetatenie-analyzer/internal/parser"
@@ -38,21 +37,15 @@ func (s *service) Handle(search string) (parser.FindState, error) {
 		return parser.StateNotFound, fmt.Errorf("format dosar invalid: %v", err)
 	}
 
-	tempPath, err := s.fetcher.GetFile(year)
+	dataBytes, err := s.fetcher.GetFile(year)
 	if err != nil {
 		return parser.StateNotFound, fmt.Errorf("nu am putut obține fișierul pentru anul %d: %v", year, err)
 	}
 
-	state, err := s.parser.ReadPdf(tempPath, search)
+	state, err := s.parser.ReadPdf(dataBytes, search)
 	if err != nil {
 		return parser.StateNotFound, fmt.Errorf("eroare la analiza documentului: %v", err)
 	}
 
 	return state, nil
-}
-
-func (s *service) cleanupTempFile(path string) {
-	if path != "" && filepath.Ext(path) == ".pdf" {
-		// In production: os.Remove(path)
-	}
 }

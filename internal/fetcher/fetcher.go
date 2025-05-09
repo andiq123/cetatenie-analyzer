@@ -1,7 +1,6 @@
 package fetcher
 
 import (
-	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -9,7 +8,7 @@ import (
 )
 
 type FileFetcher interface {
-	GetFile(year int) (io.ReadSeeker, error)
+	GetFile(year int) ([]byte, error)
 }
 
 type httpFetcher struct {
@@ -18,6 +17,9 @@ type httpFetcher struct {
 }
 
 var supportedYears = map[int]string{
+	2020: "art_11_anul_2020.pdf",
+	2021: "art_11_anul_2021.pdf",
+	2022: "art_11_anul_2022.pdf",
 	2023: "art_11_anul_2023.pdf",
 	2024: "art_11_anul_2024.pdf",
 	2025: "art_11_anul_2025.pdf",
@@ -39,7 +41,7 @@ func New() (FileFetcher, error) {
 }
 
 // GetFile retrieves the annual report PDF for the given year and returns it as an io.ReadSeeker
-func (f *httpFetcher) GetFile(year int) (io.ReadSeeker, error) {
+func (f *httpFetcher) GetFile(year int) ([]byte, error) {
 	filename, ok := supportedYears[year]
 	if !ok {
 		return nil, fmt.Errorf("anul %d nu este suportat", year)
@@ -51,7 +53,7 @@ func (f *httpFetcher) GetFile(year int) (io.ReadSeeker, error) {
 		return nil, fmt.Errorf("eroare la descărcare: %v", err)
 	}
 
-	return bytes.NewReader(data), nil
+	return data, nil
 }
 
 func (f *httpFetcher) downloadFile(url string) ([]byte, error) {
@@ -69,13 +71,8 @@ func (f *httpFetcher) downloadFile(url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("cod de stare HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("HTTP status code %d", resp.StatusCode)
 	}
 
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, resp.Body); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	return io.ReadAll(resp.Body)
 }

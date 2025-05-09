@@ -3,7 +3,6 @@ package parser
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 
@@ -11,7 +10,7 @@ import (
 )
 
 type PDFParser interface {
-	ReadPdf(data io.ReadSeeker, search string) (FindState, error)
+	ReadPdf(data []byte, search string) (FindState, error)
 	GetYear(search string) (int, error)
 }
 
@@ -29,28 +28,9 @@ const (
 	StateFoundAndResolved
 )
 
-var stateMessages = map[FindState]string{
-	StateNotFound:            "negăsit",
-	StateFoundButNotResolved: "găsit dar nerezolvat",
-	StateFoundAndResolved:    "găsit și rezolvat",
-}
-
-func GetStateMessage(state FindState) string {
-	if msg, ok := stateMessages[state]; ok {
-		return msg
-	}
-	return "Unknown state"
-}
-
-func (p *pdfParser) ReadPdf(data io.ReadSeeker, search string) (FindState, error) {
-	// Read all data into a bytes.Reader which implements both io.ReaderAt and io.Seeker
-	buf := new(bytes.Buffer)
-	_, err := io.Copy(buf, data)
-	if err != nil {
-		return StateNotFound, fmt.Errorf("error reading PDF data: %v", err)
-	}
-
-	reader, err := pdf.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
+	// Create reader directly from the byte slice
+	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return StateNotFound, fmt.Errorf("error creating PDF reader: %v", err)
 	}
@@ -80,7 +60,6 @@ func (p *pdfParser) ReadPdf(data io.ReadSeeker, search string) (FindState, error
 	return StateNotFound, nil
 }
 
-// GetYear extracts the year from a decree number string
 func (p *pdfParser) GetYear(search string) (int, error) {
 	parts := strings.Split(search, "/")
 	if len(parts) != 3 || parts[1] != "RD" {
