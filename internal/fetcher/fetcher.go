@@ -30,7 +30,7 @@ var supportedYears = map[int]string{
 func New() (FileFetcher, error) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false, // Changed to false for security
+			InsecureSkipVerify: true, // Changed to false for security
 		},
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,

@@ -16,18 +16,38 @@ import (
 
 const (
 	decreePattern = `^\d{1,5}/RD/\d{4}$`
-	startMessage  = `Bun venit la Cetățenie Analyzer! 🇷🇴
+	startMessage  = `🌟 *Bun venit la Cetățenie Analyzer!* 🇷🇴
 
-Cu acest bot poți verifica starea dosarului tău de redobândire a cetățeniei române.
+Cu acest bot poți verifica starea dosarului tău de redobândire a cetățeniei române. 
 
-Trimite numărul dosarului în formatul: [număr]/RD/[an]
-Exemplu: 123/RD/2023
+_Cum funcționează?_ 🤔
+1. Trimite numărul dosarului în formatul: *[număr]/RD/[an]*
+   Exemplu: ` + "`123/RD/2023`" + `
+2. Așteaptă rezultatul
+3. Dacă ai nevoie de ajutor, apasă pe butonul *"Meniu"* sau tastează /help
 
-Succes!`
-	invalidFormat = "Format invalid. Te rog folosește formatul: [număr]/RD/[an], de exemplu: 123/RD/2023"
-	searching     = "Caut dosarul: %s"
-	errorMessage  = "A apărut o eroare: %s"
-	unknownState  = "Stare necunoscută. Te rog încearcă mai târziu."
+Succes în procesul tău! 🍀`
+	invalidFormat = "❌ *Format invalid* \n\nTe rog folosește formatul: `[număr]/RD/[an]`\n\nExemplu: `123/RD/2023`"
+	searching     = "🔍 _Caut dosarul:_ `%s`\n\nTe rog așteaptă puțin..."
+	errorMessage  = "⚠️ *A apărut o eroare*: \n\n`%s`\n\nTe rugăm să încerci din nou mai târziu."
+	unknownState  = "❓ *Stare necunoscută*\n\nTe rugăm să încerci mai târziu sau să contactezi administratorul."
+	helpMessage   = `ℹ️ *Ajutor și instrucțiuni*
+
+📌 _Cum verific dosarul?_
+Trimite numărul dosarului în formatul: *[număr]/RD/[an]*
+Exemplu: ` + "`123/RD/2023`" + `
+
+📌 _Ce înseamnă rezultatele?_
+✅ *Găsit și rezolvat* - Dosar finalizat, poți continua procedurile
+🔄 *Găsit dar nerezolvat* - Dosar în procesare, mai așteaptă
+❌ *Negăsit* - Verifică numărul sau contactează autoritățile
+
+📌 _Comenzi disponibile:_
+/start - Mesaj de bun venit
+/help - Acest mesaj de ajutor
+/menu - Afișează meniul principal
+
+Alte întrebări? Scrie-ne aici! ✉️`
 )
 
 type BotHandler struct {
@@ -36,7 +56,6 @@ type BotHandler struct {
 }
 
 // Init initializes and starts the Telegram bot with context support
-// It blocks until the context is cancelled
 func Init(ctx context.Context) {
 	handler := &BotHandler{
 		decreeProcessor: decree_processor.New(),
@@ -51,6 +70,7 @@ func Init(ctx context.Context) {
 		bot.WithDefaultHandler(handler.defaultHandler),
 		bot.WithMessageTextHandler("/start", bot.MatchTypeExact, handler.startCommand),
 		bot.WithMessageTextHandler("/help", bot.MatchTypeExact, handler.helpCommand),
+		bot.WithMessageTextHandler("/menu", bot.MatchTypeExact, handler.menuCommand),
 	}
 
 	b, err := bot.New(token, opts...)
@@ -60,11 +80,10 @@ func Init(ctx context.Context) {
 
 	handler.botInstance = b
 
-	log.Println("Starting Telegram bot...")
+	log.Println("🤖 Starting Telegram bot...")
 
-	// Start the bot - this blocks until the context is cancelled
 	b.Start(ctx)
-	log.Println("Telegram bot stopped")
+	log.Println("🛑 Telegram bot stopped")
 }
 
 func (h *BotHandler) defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -80,15 +99,19 @@ func (h *BotHandler) defaultHandler(ctx context.Context, b *bot.Bot, update *mod
 	}
 
 	// If not a command or decree number, show help
-	h.sendHelpMessage(ctx, b, update.Message.Chat.ID)
+	h.sendMenu(ctx, b, update.Message.Chat.ID)
 }
 
 func (h *BotHandler) startCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	h.sendMessage(ctx, b, update.Message.Chat.ID, startMessage)
+	h.sendWelcomeMessage(ctx, b, update.Message.Chat.ID)
 }
 
 func (h *BotHandler) helpCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	h.sendHelpMessage(ctx, b, update.Message.Chat.ID)
+	h.sendMessage(ctx, b, update.Message.Chat.ID, helpMessage)
+}
+
+func (h *BotHandler) menuCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
+	h.sendMenu(ctx, b, update.Message.Chat.ID)
 }
 
 func (h *BotHandler) handleDecreeRequest(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -104,26 +127,70 @@ func (h *BotHandler) handleDecreeRequest(ctx context.Context, b *bot.Bot, update
 	var response string
 	switch findState {
 	case parser.StateFoundAndResolved:
-		response = fmt.Sprintf("%s - Dosar găsit și rezolvat. Poți continua procedurile ulterioare.", decreeNumber)
+		response = fmt.Sprintf("🎉 *Felicitări!* \n\nDosarul `%s` a fost *găsit și rezolvat*. \n\nPoți continua cu procedurile ulterioare pentru redobândirea cetățeniei!", decreeNumber)
 	case parser.StateFoundButNotResolved:
-		response = fmt.Sprintf("%s - Dosar găsit dar nerezolvat încă. Va trebui să mai aștepți.", decreeNumber)
+		response = fmt.Sprintf("⏳ *Dosar în procesare* \n\nDosarul `%s` a fost *găsit dar nu este rezolvat încă*. \n\nVa trebui să mai aștepți până când va fi finalizat.", decreeNumber)
 	case parser.StateNotFound:
-		response = fmt.Sprintf("%s - Dosar negăsit. Te rog verifică numărul și anul.", decreeNumber)
+		response = fmt.Sprintf("🔎 *Rezultat negativ* \n\nDosarul `%s` *nu a fost găsit*. \n\nTe rugăm să verifici numărul și anul, sau să contactezi autoritățile competente.", decreeNumber)
 	default:
 		response = unknownState
 	}
 
 	h.sendMessage(ctx, b, update.Message.Chat.ID, response)
+	h.sendMenu(ctx, b, update.Message.Chat.ID)
+}
+
+func (h *BotHandler) sendWelcomeMessage(ctx context.Context, b *bot.Bot, chatID int64) {
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:    chatID,
+		Text:      startMessage,
+		ParseMode: models.ParseModeMarkdown,
+		ReplyMarkup: &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{
+				{
+					{Text: "📋 Meniu", CallbackData: "menu"},
+					{Text: "ℹ️ Ajutor", CallbackData: "help"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to send message: %v", err)
+	}
+}
+
+func (h *BotHandler) sendMenu(ctx context.Context, b *bot.Bot, chatID int64) {
+	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:    chatID,
+		Text:      "📱 *Meniu Principal* - Alege o opțiune:",
+		ParseMode: models.ParseModeMarkdown,
+		ReplyMarkup: &models.ReplyKeyboardMarkup{
+			Keyboard: [][]models.KeyboardButton{
+				{
+					{Text: "🔍 Verifică dosar"},
+				},
+				{
+					{Text: "ℹ️ Ajutor"},
+					{Text: "🏠 Acasă"},
+				},
+			},
+			ResizeKeyboard: true,
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to send message: %v", err)
+	}
 }
 
 func (h *BotHandler) sendHelpMessage(ctx context.Context, b *bot.Bot, chatID int64) {
-	h.sendMessage(ctx, b, chatID, startMessage)
+	h.sendMessage(ctx, b, chatID, helpMessage)
 }
 
 func (h *BotHandler) sendMessage(ctx context.Context, b *bot.Bot, chatID int64, text string) {
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text:   text,
+		ChatID:    chatID,
+		Text:      text,
+		ParseMode: models.ParseModeMarkdown,
 	})
 	if err != nil {
 		log.Printf("Failed to send message: %v", err)
