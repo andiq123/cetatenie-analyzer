@@ -26,7 +26,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	bot.Init(ctx)
+	// Start the bot in a goroutine
+	go func() {
+		bot.Init(ctx)
+	}()
 
 	// Configure HTTP server with proper timeouts
 	port := os.Getenv("PORT")
