@@ -22,8 +22,6 @@ func init() {
 }
 
 func main() {
-	log.Println("Starting Cetățenie Analyzer Bot...")
-
 	// Initialize the bot with context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
