@@ -48,7 +48,7 @@ func New() (FileFetcher, error) {
 			Timeout:   60 * time.Second, // Added timeout
 		},
 		baseURL: "https://cetatenie.just.ro/storage/2023/11/",
-		cache:   cache.New(1 * time.Minute),
+		cache:   cache.New(24 * time.Hour), // Cache for 24 hours with a max of 100 items
 	}, nil
 }
 
