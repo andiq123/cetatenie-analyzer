@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/decree_processor"
 	"github.com/andiq123/cetatenie-analyzer/internal/parser"
@@ -52,6 +53,10 @@ func Init(ctx context.Context) {
 		bot.WithMessageTextHandler("/help", bot.MatchTypeExact, handler.helpCommand),
 	}
 
+	// Create a cancelable context to properly stop the bot
+	botCtx, cancel := context.WithCancel(ctx)
+	defer cancel() // Ensure cleanup if Init() exits
+
 	b, err := bot.New(token, opts...)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
@@ -59,10 +64,31 @@ func Init(ctx context.Context) {
 
 	handler.botInstance = b
 
+	// Channel to signal when the bot has stopped
+	botStopped := make(chan struct{})
+
 	go func() {
+		defer close(botStopped)
 		log.Println("Starting Telegram bot...")
-		b.Start(ctx)
+
+		// Start the bot - this blocks until the context is cancelled
+		b.Start(botCtx)
 		log.Println("Telegram bot stopped")
+	}()
+
+	// Handle shutdown signals
+	go func() {
+		<-ctx.Done()
+		log.Println("Received shutdown signal, stopping bot...")
+		cancel() // Trigger bot shutdown
+
+		// Wait for bot to stop or timeout
+		select {
+		case <-botStopped:
+			log.Println("Bot stopped successfully")
+		case <-time.After(5 * time.Second):
+			log.Println("Timeout waiting for bot to stop")
+		}
 	}()
 }
 
