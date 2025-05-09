@@ -9,6 +9,8 @@ import (
 	"github.com/ledongthuc/pdf"
 )
 
+const OFFSET = 43
+
 type PDFParser interface {
 	ReadPdf(data []byte, search string) (FindState, error)
 	GetYear(search string) (int, error)
@@ -48,8 +50,7 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 
 		index := strings.Index(text, search)
 		if index != -1 {
-			const offset = 43
-			end := min(index+offset, len(text))
+			end := min(index+OFFSET, len(text))
 			if strings.Contains(text[index:end], "/P/") {
 				return StateFoundAndResolved, nil
 			}
