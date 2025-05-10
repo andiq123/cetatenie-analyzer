@@ -1,10 +1,13 @@
 package fetcher
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/cache"
@@ -81,7 +84,7 @@ func (f *httpFetcher) GetFile(year int) ([]byte, error) {
 func (f *httpFetcher) downloadFileWithRetry(url string, maxRetries int) ([]byte, error) {
 	var lastErr error
 
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		if i > 0 {
 			time.Sleep(time.Second * time.Duration(i*i)) // Exponential backoff
 		}
@@ -104,10 +107,13 @@ func (f *httpFetcher) downloadFile(url string) ([]byte, error) {
 		return nil, fmt.Errorf("request creation failed: %w", err)
 	}
 
-	// Set realistic headers
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7")
+	// Set optimized headers
+	req.Header = http.Header{
+		"User-Agent":      {"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"},
+		"Accept":          {"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"},
+		"Accept-Language": {"ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7"},
+		"Accept-Encoding": {"gzip"}, // Enable compression
+	}
 
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -116,16 +122,53 @@ func (f *httpFetcher) downloadFile(url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024)) // Read partial response for error details
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
+		// Optimized error body reading
+		buf := make([]byte, 1024)
+		n, _ := io.ReadFull(resp.Body, buf)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(buf[:n]))
 	}
 
-	// Verify content type if you expect PDF
-	if ct := resp.Header.Get("Content-Type"); ct != "application/pdf" {
+	// Fast content type check
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "application/pdf") {
 		return nil, fmt.Errorf("unexpected content type: %s", ct)
 	}
 
-	return io.ReadAll(resp.Body)
+	// Optimized reading based on content length
+	if resp.ContentLength > 0 {
+		// Pre-allocate exact buffer size
+		buf := make([]byte, resp.ContentLength)
+		_, err := io.ReadFull(resp.Body, buf)
+		return buf, err
+	}
+
+	// Fallback for unknown size - uses sync.Pool for buffers
+	return readWithPool(resp.Body)
+}
+
+// Reusable buffer pool for unknown content lengths
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 32*1024) // 32KB chunks
+	},
+}
+
+func readWithPool(r io.Reader) ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, 64*1024)) // Initial 64KB capacity
+	temp := bufPool.Get().([]byte)
+	defer bufPool.Put(&temp)
+
+	for {
+		n, err := r.Read(temp)
+		if n > 0 {
+			buf.Write(temp[:n])
+		}
+		if err != nil {
+			if err == io.EOF {
+				return buf.Bytes(), nil
+			}
+			return nil, err
+		}
+	}
 }
 
 func (f *httpFetcher) CleanUpCache() error {

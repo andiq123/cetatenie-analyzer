@@ -29,16 +29,26 @@ func New(ttl time.Duration) *Cache {
 
 // Get retrieves an item from the cache if it exists and hasn't expired
 func (c *Cache) Get(key string) ([]byte, bool) {
+	// Fast path: Try read lock first
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	item, found := c.items[key]
+	c.mu.RUnlock()
+
 	if !found {
 		return nil, false
 	}
 
+	// Check expiration without holding the lock
 	if time.Now().After(item.Expiration) {
-		return nil, false
+		// Only take write lock if we need to clean up
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		// Double-check in case it was updated
+		if item, found := c.items[key]; found && time.Now().After(item.Expiration) {
+			delete(c.items, key)
+			return nil, false
+		}
+		return item.Data, true
 	}
 
 	return item.Data, true

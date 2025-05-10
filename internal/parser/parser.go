@@ -2,9 +2,12 @@ package parser
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/ledongthuc/pdf"
 )
@@ -37,24 +40,96 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 		return StateNotFound, fmt.Errorf("error creating PDF reader: %v", err)
 	}
 
-	for i := 1; i <= reader.NumPage(); i++ {
-		page := reader.Page(i)
-		if page.V.IsNull() {
-			continue
-		}
+	// Process pages concurrently with a worker pool
+	numPages := reader.NumPage()
+	if numPages == 0 {
+		return StateNotFound, nil
+	}
 
-		text, err := page.GetPlainText(nil)
-		if err != nil {
-			return StateNotFound, fmt.Errorf("error reading page %d: %v", i, err)
-		}
+	// Use a reasonable number of workers based on available CPUs
+	numWorkers := runtime.NumCPU()
+	if numWorkers > numPages {
+		numWorkers = numPages
+	}
 
-		index := strings.Index(text, search)
-		if index != -1 {
-			end := min(index+OFFSET, len(text))
-			if strings.Contains(text[index:end], "/P/") {
-				return StateFoundAndResolved, nil
+	type pageResult struct {
+		state FindState
+		err   error
+	}
+
+	jobs := make(chan int, numPages)
+	results := make(chan pageResult, numPages)
+	var wg sync.WaitGroup
+
+	// Start worker goroutines
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case pageNum, ok := <-jobs:
+					if !ok {
+						return
+					}
+
+					page := reader.Page(pageNum)
+					if page.V.IsNull() {
+						results <- pageResult{StateNotFound, nil}
+						continue
+					}
+
+					text, err := page.GetPlainText(nil)
+					if err != nil {
+						results <- pageResult{StateNotFound, fmt.Errorf("error reading page %d: %v", pageNum, err)}
+						continue
+					}
+
+					index := strings.Index(text, search)
+					if index != -1 {
+						end := min(index+OFFSET, len(text))
+						if strings.Contains(text[index:end], "/P/") {
+							results <- pageResult{StateFoundAndResolved, nil}
+						} else {
+							results <- pageResult{StateFoundButNotResolved, nil}
+						}
+					} else {
+						results <- pageResult{StateNotFound, nil}
+					}
+				}
 			}
-			return StateFoundButNotResolved, nil
+		}()
+	}
+
+	// Send jobs to workers
+	go func() {
+		for i := 1; i <= numPages; i++ {
+			jobs <- i
+		}
+		close(jobs)
+	}()
+
+	// Process results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Check results as they come in
+	for result := range results {
+		if result.err != nil {
+			cancel() // Stop all workers if we hit an error
+			return StateNotFound, result.err
+		}
+
+		if result.state != StateNotFound {
+			cancel() // Stop all workers if we found what we're looking for
+			return result.state, nil
 		}
 	}
 
