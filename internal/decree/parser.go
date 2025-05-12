@@ -1,4 +1,4 @@
-package parser
+package decree
 
 import (
 	"bytes"
@@ -14,24 +14,16 @@ import (
 
 const OFFSET = 43
 
-type PDFParser interface {
+type IParser interface {
 	ReadPdf(data []byte, search string) (FindState, error)
 	GetYear(search string) (int, error)
 }
 
 type pdfParser struct{}
 
-func New() PDFParser {
+func newParser() IParser {
 	return &pdfParser{}
 }
-
-type FindState int
-
-const (
-	StateNotFound FindState = iota
-	StateFoundButNotResolved
-	StateFoundAndResolved
-)
 
 func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 	// Create reader directly from the byte slice
@@ -65,7 +57,7 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for w := 0; w < numWorkers; w++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

@@ -1,4 +1,4 @@
-package bot
+package telegram_bot
 
 const (
 	decreePattern = `^\d{1,5}/RD/\d{4}$`
