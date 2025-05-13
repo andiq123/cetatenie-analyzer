@@ -30,7 +30,6 @@ func NewProcessor() Processor {
 	}
 }
 
-// Handle processes a decree search request
 func (s *service) Handle(search string) (FindState, *timer.TimeReport, error) {
 	year, err := s.parser.GetYear(search)
 	if err != nil {

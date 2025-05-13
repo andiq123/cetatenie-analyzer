@@ -15,10 +15,9 @@ type subscriptionService struct {
 }
 
 func NewSubscriptionService(db *gorm.DB) SubscriptionService {
-	return &subscriptionService{
-		db: db,
-	}
+	return &subscriptionService{db: db}
 }
+
 func (s *subscriptionService) CreateSubscription(chatID int64, decreeNumber string) error {
 	subscription := Subscription{
 		ChatID:       chatID,
@@ -26,6 +25,7 @@ func (s *subscriptionService) CreateSubscription(chatID int64, decreeNumber stri
 	}
 	return s.db.Create(&subscription).Error
 }
+
 func (s *subscriptionService) DeleteSubscription(chatID int64, decreeNumber string) error {
 	subscription := Subscription{
 		ChatID:       chatID,

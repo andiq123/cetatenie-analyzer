@@ -13,29 +13,41 @@ import (
 	"github.com/go-telegram/ui/keyboard/inline"
 )
 
+// Command constants
+const (
+	cmdStart                  = "/start"
+	cmdHelp                   = "/ajutor"
+	cmdMySubscriptions        = "/abonamente"
+	cmdAddSubscription        = "/adaugaAbonament"
+	cmdRemoveSubscription     = "/stergeAbonament"
+	cmdRemoveAllSubscriptions = "/stergeToateAbonamentele"
+)
+
+// TelegramBot defines the interface for the Telegram bot functionality
 type TelegramBot interface {
 	Init(onMessage func(ctx context.Context, update *models.Update), ctx context.Context) error
 	SendMessage(ctx context.Context, chatID int64, text string) error
 	SendMessageWithSubscribe(ctx context.Context, chatID int64, text, decreeNumber string) error
 }
 
+// botHandler implements the TelegramBot interface
 type botHandler struct {
 	instance            *bot.Bot
 	subscriptionService database.SubscriptionService
 }
 
-func newBotHandler(
-	subscriptionService database.SubscriptionService,
-) TelegramBot {
+// NewBotHandler creates a new instance of the Telegram bot handler
+func NewBotHandler(subscriptionService database.SubscriptionService) TelegramBot {
 	return &botHandler{
 		subscriptionService: subscriptionService,
 	}
 }
 
+// Init initializes the bot with the provided token and sets up command handlers
 func (h *botHandler) Init(onMessage func(ctx context.Context, update *models.Update), ctx context.Context) error {
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if token == "" {
-		return fmt.Errorf("TELEGRAM_BOT_TOKEN environment variable is not set")
+		return fmt.Errorf("variabila de mediu TELEGRAM_BOT_TOKEN nu este setată")
 	}
 
 	opts := []bot.Option{
@@ -45,89 +57,119 @@ func (h *botHandler) Init(onMessage func(ctx context.Context, update *models.Upd
 			}
 			onMessage(ctx, update)
 		}),
-		bot.WithMessageTextHandler("/start", bot.MatchTypeExact, h.startCommand),
-		bot.WithMessageTextHandler("/help", bot.MatchTypeExact, h.helpCommand),
-		bot.WithMessageTextHandler("/my", bot.MatchTypeExact, h.listSubscriptionsCommand),
-		bot.WithMessageTextHandler("/add_subscribe", bot.MatchTypeExact, h.addSubscriptionCommand),
-		bot.WithMessageTextHandler("/remove_subscribe", bot.MatchTypeExact, h.removeSubscriptionCommand),
-		bot.WithMessageTextHandler("/remove_all_subscribe", bot.MatchTypeExact, h.removeAllSubscriptionsCommand),
+		bot.WithMessageTextHandler(cmdStart, bot.MatchTypeExact, h.startCommand),
+		bot.WithMessageTextHandler(cmdHelp, bot.MatchTypeExact, h.helpCommand),
+		bot.WithMessageTextHandler(cmdMySubscriptions, bot.MatchTypeExact, h.listSubscriptionsCommand),
+		bot.WithMessageTextHandler(cmdAddSubscription, bot.MatchTypeExact, h.addSubscriptionCommand),
+		bot.WithMessageTextHandler(cmdRemoveSubscription, bot.MatchTypeExact, h.removeSubscriptionCommand),
+		bot.WithMessageTextHandler(cmdRemoveAllSubscriptions, bot.MatchTypeExact, h.removeAllSubscriptionsCommand),
 	}
 
 	var err error
 	h.instance, err = bot.New(token, opts...)
 	if err != nil {
-		return fmt.Errorf("failed to create bot: %w", err)
+		return fmt.Errorf("eroare la crearea botului: %w", err)
 	}
 
-	log.Println("🤖 Starting Telegram bot...")
-
-	// h.SendMessage(context.TODO(), 574037714, "Bot started")
-
+	log.Println("🤖 Pornire bot Telegram...")
 	h.instance.Start(ctx)
 
 	return nil
 }
 
+// SendMessage sends a message to a specific chat
 func (h *botHandler) SendMessage(ctx context.Context, chatID int64, text string) error {
-	_, err := h.instance.SendMessage(context.TODO(), &bot.SendMessageParams{
+	_, err := h.instance.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    chatID,
 		Text:      text,
-		ParseMode: models.ParseModeMarkdown,
+		ParseMode: models.ParseModeHTML,
 	})
-
 	return err
 }
 
+// SendMessageWithSubscribe sends a message with a subscription button
 func (h *botHandler) SendMessageWithSubscribe(ctx context.Context, chatID int64, text, decreeNumber string) error {
-	kb := inline.New(h.instance).Row().Button("Adauga la notificari", []byte(fmt.Sprintf("/add_subscribe %v", decreeNumber)), h.onInlineKeyboardSelect)
+	kb := inline.New(h.instance).Row().Button("Adaugă la notificări", []byte(fmt.Sprintf("%s %s", cmdAddSubscription, decreeNumber)), h.onInlineKeyboardSelect)
 
-	_, err := h.instance.SendMessage(context.TODO(), &bot.SendMessageParams{
+	_, err := h.instance.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
 		Text:        text,
-		ParseMode:   models.ParseModeMarkdown,
+		ParseMode:   models.ParseModeHTML,
 		ReplyMarkup: kb,
 	})
-
 	return err
 }
 
+// Command handlers
 func (h *botHandler) listSubscriptionsCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
 	subscriptions, err := h.subscriptionService.GetSubscriptions(update.Message.Chat.ID)
-	fmt.Println(subscriptions)
 	if err != nil {
-		h.SendMessage(ctx, update.Message.Chat.ID, "Error fetching subscriptions")
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la obținerea abonamentelor")
 		return
 	}
 	if len(subscriptions) == 0 {
-		h.SendMessage(ctx, update.Message.Chat.ID, "No subscriptions found")
+		h.SendMessage(ctx, update.Message.Chat.ID, "📭 Nu ai niciun abonament activ")
 		return
 	}
-	var response string
+
+	var response strings.Builder
+	response.WriteString("📋 *Abonamentele tale:*\n\n")
 	for _, subscription := range subscriptions {
-		response += fmt.Sprintf("Decree number: %s\n", subscription)
+		response.WriteString(fmt.Sprintf("• Dosar: `%s`\n", subscription))
 	}
-	h.SendMessage(ctx, update.Message.Chat.ID, response)
+	h.SendMessage(ctx, update.Message.Chat.ID, response.String())
 }
+
 func (h *botHandler) addSubscriptionCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	h.subscriptionService.CreateSubscription(update.Message.Chat.ID, "decree_number")
-	h.SendMessage(ctx, update.Message.Chat.ID, "Subscription added")
+	args := strings.Fields(update.Message.Text)
+	if len(args) < 2 {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Te rog specifică numărul dosarului")
+		return
+	}
+
+	decreeNumber := args[1]
+	if err := h.subscriptionService.CreateSubscription(update.Message.Chat.ID, decreeNumber); err != nil {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la adăugarea abonamentului")
+		return
+	}
+
+	h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("✅ Abonament adăugat pentru dosarul `%s`", decreeNumber))
 }
 
 func (h *botHandler) removeSubscriptionCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	h.subscriptionService.DeleteSubscription(update.Message.Chat.ID, "decree_number")
-	h.SendMessage(ctx, update.Message.Chat.ID, "Subscription removed")
+	args := strings.Fields(update.Message.Text)
+	if len(args) < 2 {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Te rog specifică numărul dosarului")
+		return
+	}
+
+	decreeNumber := args[1]
+	if err := h.subscriptionService.DeleteSubscription(update.Message.Chat.ID, decreeNumber); err != nil {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la ștergerea abonamentului")
+		return
+	}
+
+	h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("✅ Abonament șters pentru dosarul `%s`", decreeNumber))
 }
 
 func (h *botHandler) removeAllSubscriptionsCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	h.subscriptionService.DeleteAllSubscriptions(update.Message.Chat.ID)
-	h.SendMessage(ctx, update.Message.Chat.ID, "All subscriptions removed")
+	if err := h.subscriptionService.DeleteAllSubscriptions(update.Message.Chat.ID); err != nil {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la ștergerea abonamentelor")
+		return
+	}
+
+	h.SendMessage(ctx, update.Message.Chat.ID, "✅ Toate abonamentele au fost șterse")
 }
 
 func (h *botHandler) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	decree_number := strings.Trim(strings.Split(string(data), "/add_subscribe")[1], " ")
+	decreeNumber := strings.Trim(strings.Split(string(data), cmdAddSubscription)[1], " ")
 
-	h.subscriptionService.CreateSubscription(mes.Message.Chat.ID, decree_number)
-	h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("Subscription added for decree number: %s", decree_number))
+	if err := h.subscriptionService.CreateSubscription(mes.Message.Chat.ID, decreeNumber); err != nil {
+		h.SendMessage(ctx, mes.Message.Chat.ID, "❌ Eroare la adăugarea abonamentului")
+		return
+	}
+
+	h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("✅ Abonament adăugat pentru dosarul `%s`", decreeNumber))
 }
 
 func (h *botHandler) startCommand(ctx context.Context, b *bot.Bot, update *models.Update) {

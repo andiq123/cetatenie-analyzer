@@ -2,49 +2,55 @@ package telegram_bot
 
 const (
 	decreePattern = `^\d{1,5}/RD/\d{4}$`
-	startMessage  = `🌟 *Bun venit la Cetățenie Analyzer\!* 🇷🇴
+	startMessage  = `🌟 <b>Bun venit la Cetățenie Analyzer!</b> 🇷🇴
 
-Cu acest bot poți verifica starea dosarului tău de redobândire a cetățeniei române\. 
+Cu acest bot poți verifica starea dosarului tău de redobândire a cetățeniei române și să primești notificări când se schimbă starea. 
 
-_Cum funcționează?_ 🤔
-1\. Trimite numărul dosarului în formatul\: *\[număr\]/RD/\[an\]*
-   Exemplu\: ` + "`123/RD/2023`" + `
-2\. Așteaptă rezultatul
-3\. Dacă ai nevoie de ajutor, apasă pe butonul *\"Meniu\"* sau tastează /help
+<i>Cum funcționează?</i> 🤔
+1. Trimite numărul dosarului în formatul: <b>[număr]/RD/[an]</b>
+   Exemplu: <code>123/RD/2023</code>
+2. Așteaptă rezultatul
+3. Poți adăuga dosarul la notificări pentru a fi anunțat când se schimbă starea
+4. Pentru ajutor, tastează /ajutor
 
-Succes în procesul tău\! 🍀`
+Succes în procesul tău! 🍀`
 
-	invalidFormat  = "❌ *Format invalid* \n\nTe rog folosește formatul\\: `\\[număr\\]/RD/\\[an\\]`\n\nExemplu\\: `123/RD/2023`"
-	searching      = "🔍 _Caut dosarul\\:_ `%s`\n\nTe rog așteaptă puțin\\."
-	errorMessage   = "⚠️ *A apărut o eroare\\:* \n\n`%s`\n\nTe rugăm să încerci din nou mai târziu\\."
-	unknownState   = "❓ *Stare necunoscută*\n\nTe rugăm să încerci mai târziu sau să contactezi administratorul\\."
-	successMessage = "🎉 *Felicitări\\!* \n\nDosarul `%s` a fost *găsit și rezolvat*\\.\n\n" +
-		"Timp preluare date\\: %s\n" +
-		"Timp analiză document\\: %s\n\n" +
-		"Poți continua cu procedurile ulterioare pentru redobândirea cetățeniei române\\."
+	invalidFormat  = "❌ <b>Format invalid</b> \n\nTe rog folosește formatul: <code>[număr]/RD/[an]</code>\n\nExemplu: <code>123/RD/2023</code>"
+	searching      = "🔍 <i>Caut dosarul:</i> <code>%s</code>\n\nTe rog așteaptă puțin."
+	errorMessage   = "⚠️ <b>A apărut o eroare:</b> \n\n<code>%s</code>\n\nTe rugăm să încerci din nou mai târziu."
+	unknownState   = "❓ <b>Stare necunoscută</b>\n\nTe rugăm să încerci mai târziu sau să contactezi administratorul."
+	successMessage = "🎉 <b>Felicitări!</b> \n\nDosarul <code>%s</code> a fost <b>găsit și rezolvat</b>.\n\n" +
+		"Timp preluare date: %s\n" +
+		"Timp analiză document: %s\n\n" +
+		"Poți continua cu procedurile ulterioare pentru redobândirea cetățeniei române."
 
-	inProgressMsg = "⏳ *Dosar în procesare* \n\nDosarul `%s` a fost *găsit dar nu este rezolvat încă*\\.\n\n" +
-		"Timp preluare date\\: %s\n" +
-		"Timp analiză document\\: %s\n\n" +
-		"Va trebui să mai aștepți până când va fi finalizat\\."
+	inProgressMsg = "⏳ <b>Dosar în procesare</b> \n\nDosarul <code>%s</code> a fost <b>găsit dar nu este rezolvat încă</b>.\n\n" +
+		"Timp preluare date: %s\n" +
+		"Timp analiză document: %s\n\n" +
+		"Va trebui să mai aștepți până când va fi finalizat."
 
-	notFoundMsg = "🔎 *Rezultat negativ* \n\nDosarul `%s` *nu a fost găsit*\\.\n\n" +
-		"Timp preluare date\\: %s\n" +
-		"Timp analiză document\\: %s\n\n" +
-		"Te rugăm să verifici numărul și anul\\, sau să contactezi autoritățile competente\\."
+	notFoundMsg = "🔎 <b>Rezultat negativ</b> \n\nDosarul <code>%s</code> <b>nu a fost găsit</b>.\n\n" +
+		"Timp preluare date: %s\n" +
+		"Timp analiză document: %s\n\n" +
+		"Te rugăm să verifici numărul și anul, sau să contactezi autoritățile competente."
 
-	helpMessage = `ℹ️ *Ajutor și instrucțiuni*
-
-📌 _Cum verific dosarul?_
-Trimite numărul dosarului în formatul\: *\[număr\]/RD/\[an\]*
-Exemplu\: ` + "`123/RD/2023`" + `
-
-📌 _Ce înseamnă rezultatele?_
-✅ *Găsit și rezolvat* \- Dosar finalizat, poți continua procedurile
-🔄 *Găsit dar nerezolvat* \- Dosar în procesare, mai așteaptă
-❌ *Negăsit* \- Verifică numărul sau contactează autoritățile
-
-📌 _Comenzi disponibile\:_
-/start \- Mesaj de bun venit
-/help \- Acest mesaj de ajutor`
+	helpMessage = "ℹ️ <b>Ajutor și instrucțiuni</b>\n\n" +
+		"📌 <i>Cum verific dosarul?</i>\n" +
+		"Trimite numărul dosarului în formatul: <b>[număr]/RD/[an]</b>\n" +
+		"Exemplu: <code>123/RD/2023</code>\n\n" +
+		"📌 <i>Ce înseamnă rezultatele?</i>\n" +
+		"✅ <b>Găsit și rezolvat</b> - Dosar finalizat, poți continua procedurile\n" +
+		"🔄 <b>Găsit dar nerezolvat</b> - Dosar în procesare, mai așteaptă\n" +
+		"❌ <b>Negăsit</b> - Verifică numărul sau contactează autoritățile\n\n" +
+		"📌 <i>Comenzi disponibile:</i>\n" +
+		"/start - Mesaj de bun venit\n" +
+		"/ajutor - Acest mesaj de ajutor\n" +
+		"/abonamente - Vezi toate abonamentele tale\n" +
+		"/adaugaAbonament [număr] - Adaugă un dosar la notificări\n" +
+		"/stergeAbonament [număr] - Șterge un abonament\n" +
+		"/stergeToateAbonamentele - Șterge toate abonamentele\n\n" +
+		"📌 <i>Despre notificări</i>\n" +
+		"• Vei primi notificări când starea dosarului se schimbă\n" +
+		"• Poți avea mai multe dosare în abonamente\n" +
+		"• Notificările sunt trimise automat când se detectează schimbări"
 )

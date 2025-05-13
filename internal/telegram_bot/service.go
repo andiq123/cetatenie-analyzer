@@ -3,7 +3,6 @@ package telegram_bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 
@@ -14,8 +13,14 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	errorSendingMessage   = "error sending message: %w"
+	errorProcessingDecree = "error processing decree: %w"
+)
+
 type BotService interface {
 	Start(ctx context.Context) error
+	SendMessage(ctx context.Context, chatID int64, text string) error
 }
 
 type botService struct {
@@ -26,22 +31,29 @@ type botService struct {
 func NewBot(db *gorm.DB) BotService {
 	return &botService{
 		processor: decree.NewProcessor(),
-		bh:        newBotHandler(database.NewSubscriptionService(db)),
+		bh:        NewBotHandler(database.NewSubscriptionService(db)),
 	}
 }
 
 func (b *botService) Start(ctx context.Context) error {
-	err := b.bh.Init(b.defaultHandler, ctx)
-	if err != nil {
-		return err
+	if err := b.bh.Init(b.defaultHandler, ctx); err != nil {
+		return fmt.Errorf("failed to initialize bot: %w", err)
 	}
+	return nil
+}
 
+func (b *botService) SendMessage(ctx context.Context, chatID int64, text string) error {
+	if err := b.bh.SendMessage(ctx, chatID, text); err != nil {
+		return fmt.Errorf(errorSendingMessage, err)
+	}
 	return nil
 }
 
 func (b *botService) defaultHandler(ctx context.Context, update *models.Update) {
 	if !regexp.MustCompile(decreePattern).MatchString(update.Message.Text) {
-		b.bh.SendMessage(ctx, update.Message.Chat.ID, invalidFormat)
+		if err := b.bh.SendMessage(ctx, update.Message.Chat.ID, invalidFormat); err != nil {
+			fmt.Printf("Error sending invalid format message: %v\n", err)
+		}
 		return
 	}
 
@@ -53,13 +65,15 @@ func (b *botService) handleDecreeRequest(ctx context.Context, update *models.Upd
 	decreeNumber := strings.TrimSpace(update.Message.Text)
 
 	if err := b.bh.SendMessage(ctx, senderId, fmt.Sprintf(searching, decreeNumber)); err != nil {
-		log.Printf("Error sending searching message: %v", err)
+		fmt.Printf("Error sending searching message: %v\n", err)
 		return
 	}
 
 	findState, timeReport, err := b.processor.Handle(decreeNumber)
 	if err != nil {
-		b.bh.SendMessage(ctx, senderId, fmt.Sprintf(errorMessage, err.Error()))
+		if err := b.bh.SendMessage(ctx, senderId, fmt.Sprintf(errorMessage, err.Error())); err != nil {
+			fmt.Printf("Error sending error message: %v\n", err)
+		}
 		return
 	}
 
@@ -69,7 +83,10 @@ func (b *botService) handleDecreeRequest(ctx context.Context, update *models.Upd
 		response = fmt.Sprintf(successMessage, decreeNumber, timer.FormatDuration(timeReport.FetchTime), timer.FormatDuration(timeReport.ParseTime))
 	case decree.StateFoundButNotResolved:
 		response = fmt.Sprintf(inProgressMsg, decreeNumber, timer.FormatDuration(timeReport.FetchTime), timer.FormatDuration(timeReport.ParseTime))
-		b.bh.SendMessageWithSubscribe(ctx, senderId, response, decreeNumber)
+		if err := b.bh.SendMessageWithSubscribe(ctx, senderId, response, decreeNumber); err != nil {
+			fmt.Printf("Error sending message with subscribe: %v\n", err)
+			return
+		}
 		return
 	case decree.StateNotFound:
 		response = fmt.Sprintf(notFoundMsg, decreeNumber, timer.FormatDuration(timeReport.FetchTime), timer.FormatDuration(timeReport.ParseTime))
@@ -78,6 +95,6 @@ func (b *botService) handleDecreeRequest(ctx context.Context, update *models.Upd
 	}
 
 	if err := b.bh.SendMessage(ctx, senderId, response); err != nil {
-		log.Printf("Error sending response message: %v", err)
+		fmt.Printf("Error sending response message: %v\n", err)
 	}
 }

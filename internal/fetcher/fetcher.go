@@ -37,7 +37,7 @@ var supportedYears = map[int]string{
 func New() (FileFetcher, error) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // Changed to false for security
+			InsecureSkipVerify: true,
 		},
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
@@ -48,10 +48,10 @@ func New() (FileFetcher, error) {
 	return &httpFetcher{
 		client: &http.Client{
 			Transport: transport,
-			Timeout:   60 * time.Second, // Added timeout
+			Timeout:   60 * time.Second,
 		},
 		baseURL: "https://cetatenie.just.ro/storage/2023/11/",
-		cache:   cache.New(24 * time.Hour), // Cache for 24 hours with a max of 100 items
+		cache:   cache.New(24 * time.Hour),
 	}, nil
 }
 
