@@ -1,6 +1,11 @@
 package main
 
 import (
+	"context"
+	"os"
+	"os/signal"
+
+	"github.com/andiq123/cetatenie-analyzer/internal/database"
 	"github.com/andiq123/cetatenie-analyzer/internal/telegram_bot"
 	"github.com/joho/godotenv"
 )
@@ -10,8 +15,15 @@ func init() {
 }
 
 func main() {
-	bot := telegram_bot.NewBot()
-	err := bot.Start()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	db, err := database.InitDb()
+	if err != nil {
+		panic(err)
+	}
+
+	bot := telegram_bot.NewBot(db)
+	err = bot.Start(ctx)
 	if err != nil {
 		panic(err)
 	}

@@ -5,19 +5,11 @@ import (
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
-
-type Product struct {
-	gorm.Model
-	Code  string
-	Price uint
-}
-
-func initDb() error {
-	DB, err := gorm.Open(sqlite.Open("./data.db"), &gorm.Config{})
+func InitDb() (*gorm.DB, error) {
+	db, err := gorm.Open(sqlite.Open("./data.db"), &gorm.Config{})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	DB.AutoMigrate(&Product{})
-	return nil
+	db.AutoMigrate(&Subscription{})
+	return db, nil
 }

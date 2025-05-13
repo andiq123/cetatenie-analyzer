@@ -39,10 +39,7 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 	}
 
 	// Use a reasonable number of workers based on available CPUs
-	numWorkers := runtime.NumCPU()
-	if numWorkers > numPages {
-		numWorkers = numPages
-	}
+	numWorkers := min(runtime.NumCPU(), numPages)
 
 	type pageResult struct {
 		state FindState
@@ -51,9 +48,9 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 
 	jobs := make(chan int, numPages)
 	results := make(chan pageResult, numPages)
+
 	var wg sync.WaitGroup
 
-	// Start worker goroutines
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -98,7 +95,6 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 		}()
 	}
 
-	// Send jobs to workers
 	go func() {
 		for i := 1; i <= numPages; i++ {
 			jobs <- i
@@ -106,21 +102,19 @@ func (p *pdfParser) ReadPdf(data []byte, search string) (FindState, error) {
 		close(jobs)
 	}()
 
-	// Process results
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Check results as they come in
 	for result := range results {
 		if result.err != nil {
-			cancel() // Stop all workers if we hit an error
+			cancel()
 			return StateNotFound, result.err
 		}
 
 		if result.state != StateNotFound {
-			cancel() // Stop all workers if we found what we're looking for
+			cancel()
 			return result.state, nil
 		}
 	}

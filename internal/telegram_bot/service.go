@@ -7,13 +7,15 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/andiq123/cetatenie-analyzer/internal/database"
 	"github.com/andiq123/cetatenie-analyzer/internal/decree"
 	"github.com/andiq123/cetatenie-analyzer/internal/timer"
 	"github.com/go-telegram/bot/models"
+	"gorm.io/gorm"
 )
 
 type BotService interface {
-	Start() error
+	Start(ctx context.Context) error
 }
 
 type botService struct {
@@ -21,15 +23,15 @@ type botService struct {
 	processor decree.Processor
 }
 
-func NewBot() BotService {
+func NewBot(db *gorm.DB) BotService {
 	return &botService{
 		processor: decree.NewProcessor(),
-		bh:        newBotHandler(),
+		bh:        newBotHandler(database.NewSubscriptionService(db)),
 	}
 }
 
-func (b *botService) Start() error {
-	err := b.bh.Init(b.defaultHandler)
+func (b *botService) Start(ctx context.Context) error {
+	err := b.bh.Init(b.defaultHandler, ctx)
 	if err != nil {
 		return err
 	}
@@ -67,6 +69,8 @@ func (b *botService) handleDecreeRequest(ctx context.Context, update *models.Upd
 		response = fmt.Sprintf(successMessage, decreeNumber, timer.FormatDuration(timeReport.FetchTime), timer.FormatDuration(timeReport.ParseTime))
 	case decree.StateFoundButNotResolved:
 		response = fmt.Sprintf(inProgressMsg, decreeNumber, timer.FormatDuration(timeReport.FetchTime), timer.FormatDuration(timeReport.ParseTime))
+		b.bh.SendMessageWithSubscribe(ctx, senderId, response, decreeNumber)
+		return
 	case decree.StateNotFound:
 		response = fmt.Sprintf(notFoundMsg, decreeNumber, timer.FormatDuration(timeReport.FetchTime), timer.FormatDuration(timeReport.ParseTime))
 	default:
