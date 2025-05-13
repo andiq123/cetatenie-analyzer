@@ -13,15 +13,25 @@ import (
 	"github.com/go-telegram/ui/keyboard/inline"
 )
 
-// Command constants
+// Command constants - fixed to comply with Telegram's requirements
+// Commands must be all lowercase English letters, digits, and underscores
 const (
 	cmdStart                  = "/start"
 	cmdHelp                   = "/ajutor"
 	cmdMySubscriptions        = "/abonamente"
-	cmdAddSubscription        = "/adaugaAbonament"
-	cmdRemoveSubscription     = "/stergeAbonament"
-	cmdRemoveAllSubscriptions = "/stergeToateAbonamentele"
+	cmdAddSubscription        = "/adauga"
+	cmdRemoveSubscription     = "/sterge"
+	cmdRemoveAllSubscriptions = "/sterge_toate"
 )
+
+var botCommands = []models.BotCommand{
+	{Command: strings.TrimPrefix(cmdStart, "/"), Description: "Pornire bot și mesaj de bun venit"},
+	{Command: strings.TrimPrefix(cmdHelp, "/"), Description: "Ajutor și informații despre comenzi"},
+	{Command: strings.TrimPrefix(cmdMySubscriptions, "/"), Description: "Listează toate abonamentele tale"},
+	{Command: strings.TrimPrefix(cmdAddSubscription, "/"), Description: "Adaugă un abonament la un dosar"},
+	{Command: strings.TrimPrefix(cmdRemoveSubscription, "/"), Description: "Șterge un abonament la un dosar"},
+	{Command: strings.TrimPrefix(cmdRemoveAllSubscriptions, "/"), Description: "Șterge toate abonamentele"},
+}
 
 // TelegramBot defines the interface for the Telegram bot functionality
 type TelegramBot interface {
@@ -60,8 +70,8 @@ func (h *botHandler) Init(onMessage func(ctx context.Context, update *models.Upd
 		bot.WithMessageTextHandler(cmdStart, bot.MatchTypeExact, h.startCommand),
 		bot.WithMessageTextHandler(cmdHelp, bot.MatchTypeExact, h.helpCommand),
 		bot.WithMessageTextHandler(cmdMySubscriptions, bot.MatchTypeExact, h.listSubscriptionsCommand),
-		bot.WithMessageTextHandler(cmdAddSubscription, bot.MatchTypeExact, h.addSubscriptionCommand),
-		bot.WithMessageTextHandler(cmdRemoveSubscription, bot.MatchTypeExact, h.removeSubscriptionCommand),
+		bot.WithMessageTextHandler(cmdAddSubscription, bot.MatchTypePrefix, h.addSubscriptionCommand),
+		bot.WithMessageTextHandler(cmdRemoveSubscription, bot.MatchTypePrefix, h.removeSubscriptionCommand),
 		bot.WithMessageTextHandler(cmdRemoveAllSubscriptions, bot.MatchTypeExact, h.removeAllSubscriptionsCommand),
 	}
 
@@ -69,6 +79,16 @@ func (h *botHandler) Init(onMessage func(ctx context.Context, update *models.Upd
 	h.instance, err = bot.New(token, opts...)
 	if err != nil {
 		return fmt.Errorf("eroare la crearea botului: %w", err)
+	}
+
+	// Set the bot commands with all parameters
+	_, err = h.instance.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+		Commands:     botCommands,
+		Scope:        &models.BotCommandScopeDefault{}, // Default scope for all chats
+		LanguageCode: "ro",                             // Romanian language code
+	})
+	if err != nil {
+		return fmt.Errorf("eroare la setarea comenzilor botului: %w", err)
 	}
 
 	log.Println("🤖 Pornire bot Telegram...")
@@ -128,7 +148,12 @@ func (h *botHandler) addSubscriptionCommand(ctx context.Context, b *bot.Bot, upd
 	}
 
 	decreeNumber := args[1]
-	if err := h.subscriptionService.CreateSubscription(update.Message.Chat.ID, decreeNumber); err != nil {
+	err := h.subscriptionService.CreateSubscription(update.Message.Chat.ID, decreeNumber)
+	if err != nil {
+		if strings.Contains(err.Error(), "subscription already exists") {
+			h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("ℹ️ Ești deja abonat la dosarul `%s`", decreeNumber))
+			return
+		}
 		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la adăugarea abonamentului")
 		return
 	}
@@ -164,7 +189,12 @@ func (h *botHandler) removeAllSubscriptionsCommand(ctx context.Context, b *bot.B
 func (h *botHandler) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
 	decreeNumber := strings.Trim(strings.Split(string(data), cmdAddSubscription)[1], " ")
 
-	if err := h.subscriptionService.CreateSubscription(mes.Message.Chat.ID, decreeNumber); err != nil {
+	err := h.subscriptionService.CreateSubscription(mes.Message.Chat.ID, decreeNumber)
+	if err != nil {
+		if strings.Contains(err.Error(), "subscription already exists") {
+			h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("ℹ️ Ești deja abonat la dosarul `%s`", decreeNumber))
+			return
+		}
 		h.SendMessage(ctx, mes.Message.Chat.ID, "❌ Eroare la adăugarea abonamentului")
 		return
 	}

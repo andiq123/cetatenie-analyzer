@@ -40,7 +40,7 @@ func main() {
 	fmt.Println("Starting subscription checker...")
 	checkerErr := make(chan error, 1)
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 
 		if err := checker.CheckAllSubscriptions(); err != nil {

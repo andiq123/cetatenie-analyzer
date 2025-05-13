@@ -1,6 +1,10 @@
 package database
 
-import "gorm.io/gorm"
+import (
+	"fmt"
+
+	"gorm.io/gorm"
+)
 
 type SubscriptionService interface {
 	CreateSubscription(chatID int64, decreeNumber string) error
@@ -19,6 +23,16 @@ func NewSubscriptionService(db *gorm.DB) SubscriptionService {
 }
 
 func (s *subscriptionService) CreateSubscription(chatID int64, decreeNumber string) error {
+	// Check if subscription already exists
+	var existingSubscription Subscription
+	result := s.db.Where("chat_id = ? AND decree_number = ?", chatID, decreeNumber).First(&existingSubscription)
+	if result.Error == nil {
+		return fmt.Errorf("subscription already exists for decree number %s", decreeNumber)
+	}
+	if result.Error != gorm.ErrRecordNotFound {
+		return fmt.Errorf("error checking existing subscription: %v", result.Error)
+	}
+
 	subscription := Subscription{
 		ChatID:       chatID,
 		DecreeNumber: decreeNumber,
@@ -27,11 +41,7 @@ func (s *subscriptionService) CreateSubscription(chatID int64, decreeNumber stri
 }
 
 func (s *subscriptionService) DeleteSubscription(chatID int64, decreeNumber string) error {
-	subscription := Subscription{
-		ChatID:       chatID,
-		DecreeNumber: decreeNumber,
-	}
-	return s.db.Delete(&subscription).Error
+	return s.db.Where("chat_id = ? AND decree_number = ?", chatID, decreeNumber).Delete(&Subscription{}).Error
 }
 
 func (s *subscriptionService) DeleteAllSubscriptions(chatID int64) error {
