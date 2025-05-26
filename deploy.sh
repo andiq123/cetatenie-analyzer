@@ -23,6 +23,15 @@ echo "🧹 Cleaning previous build..."
 rm -rf build/
 mkdir -p build
 
+# Copy .env file to build directory
+echo "📋 Copying .env file..."
+if [ -f .env ]; then
+    cp .env build/
+    echo "✅ .env file copied successfully"
+else
+    echo "⚠️ Warning: .env file not found in current directory"
+fi
+
 # Build the application with optimizations
 echo "🔨 Building application..."
 go build -tags sqlite3 \
@@ -40,11 +49,10 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=/home/$USER/cetatenie-analyzer
+WorkingDirectory=/home/$USER/cetatenie-analyzer/build
 ExecStart=/home/$USER/cetatenie-analyzer/build/cetatenie-analyzer
 Restart=always
 RestartSec=10
-Environment=TELEGRAM_BOT_TOKEN=your_bot_token_here
 
 [Install]
 WantedBy=multi-user.target
