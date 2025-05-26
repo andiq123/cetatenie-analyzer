@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/andiq123/cetatenie-analyzer/internal/database"
@@ -16,21 +17,21 @@ import (
 // Command constants - fixed to comply with Telegram's requirements
 // Commands must be all lowercase English letters, digits, and underscores
 const (
-	cmdStart                  = "/start"
-	cmdHelp                   = "/ajutor"
-	cmdMySubscriptions        = "/abonamente"
-	cmdAddSubscription        = "/adauga"
-	cmdRemoveSubscription     = "/sterge"
-	cmdRemoveAllSubscriptions = "/sterge_toate"
+	cmdStart                  = "start"
+	cmdHelp                   = "ajutor"
+	cmdMySubscriptions        = "abonamente"
+	cmdAddSubscription        = "adauga"
+	cmdRemoveSubscription     = "sterge"
+	cmdRemoveAllSubscriptions = "sterge_toate"
 )
 
 var botCommands = []models.BotCommand{
-	{Command: strings.TrimPrefix(cmdStart, "/"), Description: "Pornire bot și mesaj de bun venit"},
-	{Command: strings.TrimPrefix(cmdHelp, "/"), Description: "Ajutor și informații despre comenzi"},
-	{Command: strings.TrimPrefix(cmdMySubscriptions, "/"), Description: "Listează toate abonamentele tale"},
-	{Command: strings.TrimPrefix(cmdAddSubscription, "/"), Description: "Adaugă un abonament la un dosar"},
-	{Command: strings.TrimPrefix(cmdRemoveSubscription, "/"), Description: "Șterge un abonament la un dosar"},
-	{Command: strings.TrimPrefix(cmdRemoveAllSubscriptions, "/"), Description: "Șterge toate abonamentele"},
+	{Command: cmdStart, Description: "🎯 Pornește botul și vezi mesajul de bun venit"},
+	{Command: cmdHelp, Description: "❓ Vezi ajutor și informații despre comenzi"},
+	{Command: cmdMySubscriptions, Description: "📋 Vezi toate dosarele la care ești abonat"},
+	{Command: cmdAddSubscription, Description: "➕ Adaugă un dosar la notificări (ex: /adauga 123/RD/2023)"},
+	{Command: cmdRemoveSubscription, Description: "➖ Șterge un dosar din notificări (ex: /sterge 123/RD/2023)"},
+	{Command: cmdRemoveAllSubscriptions, Description: "🗑 Șterge toate abonamentele la dosare"},
 }
 
 // TelegramBot defines the interface for the Telegram bot functionality
@@ -67,12 +68,12 @@ func (h *botHandler) Init(onMessage func(ctx context.Context, update *models.Upd
 			}
 			onMessage(ctx, update)
 		}),
-		bot.WithMessageTextHandler(cmdStart, bot.MatchTypeExact, h.startCommand),
-		bot.WithMessageTextHandler(cmdHelp, bot.MatchTypeExact, h.helpCommand),
-		bot.WithMessageTextHandler(cmdMySubscriptions, bot.MatchTypeExact, h.listSubscriptionsCommand),
-		bot.WithMessageTextHandler(cmdAddSubscription, bot.MatchTypePrefix, h.addSubscriptionCommand),
-		bot.WithMessageTextHandler(cmdRemoveSubscription, bot.MatchTypePrefix, h.removeSubscriptionCommand),
-		bot.WithMessageTextHandler(cmdRemoveAllSubscriptions, bot.MatchTypeExact, h.removeAllSubscriptionsCommand),
+		bot.WithMessageTextHandler("/"+cmdStart, bot.MatchTypeExact, h.startCommand),
+		bot.WithMessageTextHandler("/"+cmdHelp, bot.MatchTypeExact, h.helpCommand),
+		bot.WithMessageTextHandler("/"+cmdMySubscriptions, bot.MatchTypeExact, h.listSubscriptionsCommand),
+		bot.WithMessageTextHandler("/"+cmdRemoveAllSubscriptions, bot.MatchTypeExact, h.removeAllSubscriptionsCommand),
+		bot.WithMessageTextHandler("/"+cmdAddSubscription, bot.MatchTypePrefix, h.addSubscriptionCommand),
+		bot.WithMessageTextHandler("/"+cmdRemoveSubscription, bot.MatchTypePrefix, h.removeSubscriptionCommand),
 	}
 
 	var err error
@@ -124,82 +125,118 @@ func (h *botHandler) SendMessageWithSubscribe(ctx context.Context, chatID int64,
 func (h *botHandler) listSubscriptionsCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
 	subscriptions, err := h.subscriptionService.GetSubscriptions(update.Message.Chat.ID)
 	if err != nil {
-		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la obținerea abonamentelor")
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Eroare la obținerea abonamentelor</b>\n\nTe rugăm să încerci din nou mai târziu.")
 		return
 	}
 	if len(subscriptions) == 0 {
-		h.SendMessage(ctx, update.Message.Chat.ID, "📭 Nu ai niciun abonament activ")
+		h.SendMessage(ctx, update.Message.Chat.ID, "📭 <b>Nu ai niciun abonament activ</b>\n\nFolosește comanda /adauga pentru a adăuga un dosar la notificări.")
 		return
 	}
 
 	var response strings.Builder
-	response.WriteString("📋 *Abonamentele tale:*\n\n")
+	response.WriteString("📋 <b>Abonamentele tale:</b>\n\n")
 	for _, subscription := range subscriptions {
-		response.WriteString(fmt.Sprintf("• Dosar: `%s`\n", subscription))
+		response.WriteString(fmt.Sprintf("• Dosar: <code>%s</code>\n", subscription))
 	}
 	h.SendMessage(ctx, update.Message.Chat.ID, response.String())
 }
 
 func (h *botHandler) addSubscriptionCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	args := strings.Fields(update.Message.Text)
-	if len(args) < 2 {
-		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Te rog specifică numărul dosarului")
+	// Split the message into command and arguments
+	parts := strings.Fields(update.Message.Text)
+	if len(parts) < 2 {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Format invalid</b>\n\nTe rog specifică numărul dosarului în formatul: <b>[număr]/RD/[an]</b>\nExemplu: <code>123/RD/2023</code>")
 		return
 	}
 
-	decreeNumber := args[1]
+	// Get the decree number (everything after the command)
+	decreeNumber := strings.Join(parts[1:], " ")
+
+	// Validate the decree number format
+	if !regexp.MustCompile(decreePattern).MatchString(decreeNumber) {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Format invalid</b>\n\nTe rog specifică numărul dosarului în formatul: <b>[număr]/RD/[an]</b>\nExemplu: <code>123/RD/2023</code>")
+		return
+	}
+
 	err := h.subscriptionService.CreateSubscription(update.Message.Chat.ID, decreeNumber)
 	if err != nil {
 		if strings.Contains(err.Error(), "subscription already exists") {
-			h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("ℹ️ Ești deja abonat la dosarul `%s`", decreeNumber))
+			h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("ℹ️ <b>Abonament existent</b>\n\nEști deja abonat la dosarul <code>%s</code>", decreeNumber))
 			return
 		}
-		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la adăugarea abonamentului")
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Eroare la adăugarea abonamentului</b>\n\nTe rugăm să încerci din nou mai târziu.")
 		return
 	}
 
-	h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("✅ Abonament adăugat pentru dosarul `%s`", decreeNumber))
+	h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("✅ <b>Abonament adăugat</b>\n\nAi fost abonat cu succes la dosarul <code>%s</code>", decreeNumber))
 }
 
 func (h *botHandler) removeSubscriptionCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	args := strings.Fields(update.Message.Text)
-	if len(args) < 2 {
-		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Te rog specifică numărul dosarului")
+	// Split the message into command and arguments
+	parts := strings.Fields(update.Message.Text)
+	if len(parts) < 2 {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Format invalid</b>\n\nTe rog specifică numărul dosarului în formatul: <b>[număr]/RD/[an]</b>\nExemplu: <code>123/RD/2023</code>")
 		return
 	}
 
-	decreeNumber := args[1]
+	// Get the decree number (everything after the command)
+	decreeNumber := strings.Join(parts[1:], " ")
+
+	// Validate the decree number format
+	if !regexp.MustCompile(decreePattern).MatchString(decreeNumber) {
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Format invalid</b>\n\nTe rog specifică numărul dosarului în formatul: <b>[număr]/RD/[an]</b>\nExemplu: <code>123/RD/2023</code>")
+		return
+	}
+
 	if err := h.subscriptionService.DeleteSubscription(update.Message.Chat.ID, decreeNumber); err != nil {
-		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la ștergerea abonamentului")
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Eroare la ștergerea abonamentului</b>\n\nTe rugăm să încerci din nou mai târziu.")
 		return
 	}
 
-	h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("✅ Abonament șters pentru dosarul `%s`", decreeNumber))
+	h.SendMessage(ctx, update.Message.Chat.ID, fmt.Sprintf("✅ <b>Abonament șters</b>\n\nAi fost dezabonat cu succes de la dosarul <code>%s</code>", decreeNumber))
 }
 
 func (h *botHandler) removeAllSubscriptionsCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
+	// Add logging to debug the command
+	log.Printf("Received removeAllSubscriptionsCommand from chat ID: %d", update.Message.Chat.ID)
+
 	if err := h.subscriptionService.DeleteAllSubscriptions(update.Message.Chat.ID); err != nil {
-		h.SendMessage(ctx, update.Message.Chat.ID, "❌ Eroare la ștergerea abonamentelor")
+		log.Printf("Error deleting all subscriptions: %v", err)
+		h.SendMessage(ctx, update.Message.Chat.ID, "❌ <b>Eroare la ștergerea abonamentelor</b>\n\nTe rugăm să încerci din nou mai târziu.")
 		return
 	}
 
-	h.SendMessage(ctx, update.Message.Chat.ID, "✅ Toate abonamentele au fost șterse")
+	log.Printf("Successfully deleted all subscriptions for chat ID: %d", update.Message.Chat.ID)
+	h.SendMessage(ctx, update.Message.Chat.ID, "✅ <b>Abonamente șterse</b>\n\nToate abonamentele tale au fost șterse cu succes.")
 }
 
 func (h *botHandler) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	decreeNumber := strings.Trim(strings.Split(string(data), cmdAddSubscription)[1], " ")
+	// Extract the decree number from the data
+	parts := strings.Split(string(data), " ")
+	if len(parts) < 2 {
+		h.SendMessage(ctx, mes.Message.Chat.ID, "❌ <b>Eroare la procesarea comenzii</b>\n\nTe rugăm să încerci din nou.")
+		return
+	}
+
+	decreeNumber := parts[1]
+
+	// Validate the decree number format
+	if !regexp.MustCompile(decreePattern).MatchString(decreeNumber) {
+		h.SendMessage(ctx, mes.Message.Chat.ID, "❌ <b>Format invalid</b>\n\nTe rog specifică numărul dosarului în formatul: <b>[număr]/RD/[an]</b>\nExemplu: <code>123/RD/2023</code>")
+		return
+	}
 
 	err := h.subscriptionService.CreateSubscription(mes.Message.Chat.ID, decreeNumber)
 	if err != nil {
 		if strings.Contains(err.Error(), "subscription already exists") {
-			h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("ℹ️ Ești deja abonat la dosarul `%s`", decreeNumber))
+			h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("ℹ️ <b>Abonament existent</b>\n\nEști deja abonat la dosarul <code>%s</code>", decreeNumber))
 			return
 		}
-		h.SendMessage(ctx, mes.Message.Chat.ID, "❌ Eroare la adăugarea abonamentului")
+		h.SendMessage(ctx, mes.Message.Chat.ID, "❌ <b>Eroare la adăugarea abonamentului</b>\n\nTe rugăm să încerci din nou mai târziu.")
 		return
 	}
 
-	h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("✅ Abonament adăugat pentru dosarul `%s`", decreeNumber))
+	h.SendMessage(ctx, mes.Message.Chat.ID, fmt.Sprintf("✅ <b>Abonament adăugat</b>\n\nAi fost abonat cu succes la dosarul <code>%s</code>", decreeNumber))
 }
 
 func (h *botHandler) startCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
